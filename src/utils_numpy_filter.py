@@ -15,27 +15,27 @@ class NUMPYIEKF:
     def __init__(self, parameter_class=None):
 
         # variables to initialize with `filter_parameters`
-        self.g = None
-        self.cov_omega = None
-        self.cov_acc = None
-        self.cov_b_omega = None
-        self.cov_b_acc = None
-        self.cov_Rot_c_i = None
-        self.cov_t_c_i = None
-        self.cov_lat = None
-        self.cov_up = None
-        self.cov_b_omega0 = None
-        self.cov_b_acc0 = None
-        self.cov_Rot0 = None
-        self.cov_v0 = None
-        self.cov_Rot_c_i0 = None
+        self.g = None #gravity
+        self.cov_omega = None #angular velocity covariance
+        self.cov_acc = None # specific force covariance
+        self.cov_b_omega = None #angular velocity bias 
+        self.cov_b_acc = None #specific force(acceleration) bias
+        self.cov_Rot_c_i = None #rotational car frame
+        self.cov_t_c_i = None 
+        self.cov_lat = None #lateral
+        self.cov_up = None #vertical
+        self.cov_b_omega0 = None #intial angular velocity bias 
+        self.cov_b_acc0 = None #intial specific force(acceleration) bias
+        self.cov_Rot0 = None #initial rotational
+        self.cov_v0 = None #intial Velocity
+        self.cov_Rot_c_i0 = None #
         self.cov_t_c_i0 = None
-        self.Q = None
+        self.Q = None #Q noice covariance matrix
         self.Q_dim = None
         self.n_normalize_rot = None
         self.n_normalize_rot_c_i = None
-        self.P_dim = None
-        self.verbose = None
+        self.P_dim = None #covariance matrix of whole system
+        self. verbose = None
 
         # set the parameters
         if parameter_class is None:
@@ -107,7 +107,7 @@ class NUMPYIEKF:
                      and not callable(getattr(self.filter_parameters, a))]
         for attr in attr_list:
             setattr(self, attr, getattr(self.filter_parameters, attr))
-
+        #process noise covariance matrix 
         self.Q = np.diag([self.cov_omega, self.cov_omega, self. cov_omega,
                            self.cov_acc, self.cov_acc, self.cov_acc,
                            self.cov_b_omega, self.cov_b_omega, self.cov_b_omega,
@@ -116,8 +116,11 @@ class NUMPYIEKF:
                            self.cov_t_c_i, self.cov_t_c_i, self.cov_t_c_i])
 
     def run(self, t, u, measurements_covs, v_mes, p_mes, N, ang0):
+        """Runs the EKF on the input data.It performs initialization, propagation, 
+            and update steps for each time step."""
         dt = t[1:] - t[:-1]  # (s)
         if N is None:
+            #print(u.shape[0])
             N = u.shape[0]
         Rot, v, p, b_omega, b_acc, Rot_c_i, t_c_i, P = self.init_run(dt, u, p_mes, v_mes,
                                        ang0, N)
@@ -412,6 +415,8 @@ class NUMPYIEKF:
         return roll, pitch, yaw
 
     def set_learned_covariance(self, torch_iekf):
+        """Updates the filter's covariance matrices based on the 
+            learned covariances from a PyTorch-based EKF (torch_iekf)."""
         torch_iekf.set_Q()
         self.Q = torch_iekf.Q.cpu().detach().numpy()
 

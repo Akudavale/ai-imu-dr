@@ -51,8 +51,6 @@ def umeyama_alignment(x, y, with_scale=False):
     :param with_scale: set to True to align also the scale (default: 1.0 scale)
     :return: r, t, c - rotation matrix, translation vector and scale factor
     """
-
-
     # m = dimension, n = nr. of data points
     m, n = x.shape
 
@@ -70,7 +68,7 @@ def umeyama_alignment(x, y, with_scale=False):
         outer_sum += np.outer((y[:, i] - mean_y), (x[:, i] - mean_x))
     cov_xy = np.multiply(1.0 / n, outer_sum)
 
-    # SVD (text betw. eq. 38 and 39)
+    # SVD (text betw. eq. 38 and 39), SVD (Singular Value Decomposition): 
     u, d, v = np.linalg.svd(cov_xy)
 
     # S matrix, eq. 43
