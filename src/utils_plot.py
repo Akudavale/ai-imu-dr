@@ -1,13 +1,19 @@
 import matplotlib
 import os
+import pickle
 from termcolor import cprint
 import matplotlib.pyplot as plt
 import numpy as np
 from itertools import chain
 from utils import *
 from utils_torch_filter import TORCHIEKF
+from train_torch_filter import avg_loss_per_epoch
+
+
 
 def results_filter(args, dataset):
+    RMSE_xy = []
+    RMSE_z = []
 
     for i in range(0, len(dataset.datasets)):
         plt.close('all')
@@ -58,8 +64,12 @@ def results_filter(args, dataset):
         v_norm = np.sqrt(np.sum(v_gt ** 2, 1))
         v_norm /= np.max(v_norm)
 
+        #print(f"predicted: {p}, predicted shape {p.shape}") #for debug
+        #print(f"GT: {p_gt}, GT shape {p_gt.shape}") #for debug
+
         # Compute various errors
         error_p = np.abs(p_gt - p)
+  
         # MATE
         mate_xy = np.mean(error_p[:, :2], 1)
         mate_z = error_p[:, 2]
@@ -71,7 +81,30 @@ def results_filter(args, dataset):
         # RMSE
         rmse_xy = 1 / 2 * np.sqrt(error_p[:, 0] ** 2 + error_p[:, 1] ** 2)
         rmse_z = error_p[:, 2]
+        RMSE_xy.append(rmse_xy)
+        RMSE_z.append(rmse_z)
 
+        #R_Squared loss or Coefficient of Determination:
+        """ provides a measure of how well the predicted states explain the variability in the actual states.
+            It ranges between 0 and 1, with higher values indicating a better fit.
+        """
+        def calculate_r_squared(observed, predicted):
+            mean_observed = np.mean(observed)
+            tss = np.sum((observed - mean_observed)**2)
+            sse = np.sum((predicted - observed)**2)
+            r_squared = 1 - (sse / tss)
+            r_squared = max(0, min(1, r_squared))  # Ensure R-squared is within [0, 1]
+            return r_squared
+        
+        r2_position_x = calculate_r_squared(p_gt[:, 0], p[:, 0])
+        r2_position_y = calculate_r_squared(p_gt[:, 1], p[:, 1])
+        r2_position_z = calculate_r_squared(p_gt[:, 2], p[:, 2])
+
+        # Calculate R-squared for orientation 
+        r2_roll = calculate_r_squared(ang_gt[:, 0], ang[:, 0])
+        r2_pitch = calculate_r_squared(ang_gt[:, 1], ang[:, 1])
+        r2_yaw = calculate_r_squared(ang_gt[:, 2], ang[:, 2])
+  
         RotT = torch.from_numpy(Rot).float().transpose(-1, -2)
 
         v_r = (RotT.matmul(torch.from_numpy(v).float().unsqueeze(-1)).squeeze()).numpy()
@@ -101,6 +134,10 @@ def results_filter(args, dataset):
         # errors: MATE, CATE  RMSE
         fig7, axs7 = plt.subplots(3, 1, sharex=True, figsize=(20, 10))
 
+        fig8, axs8 = plt.subplots(3, 1, sharex=True, figsize=(20, 10))
+
+        fig9, axs9 = plt.subplots(3, 1, sharex=True, figsize=(20, 10))
+        
         axs1[0].plot(t, p_gt)
         axs1[0].plot(t, p)
         axs1[1].plot(t, v_gt)
@@ -135,6 +172,14 @@ def results_filter(args, dataset):
         axs7[1].plot(t, cate_z)
         axs7[2].plot(t, error_p)
 
+        axs8[0].plot(t, [r2_position_x] * len(t), label='R-squared Position X')
+        axs8[1].plot(t, [r2_position_y] * len(t), label='R-squared Position Y')
+        axs8[2].plot(t, [r2_position_z] * len(t), label='R-squared Position Z')
+
+        axs9[0].plot(t, [r2_roll] * len(t), label='R-squared Roll')
+        axs9[1].plot(t, [r2_pitch] * len(t), label='R-squared Pitch')
+        axs9[2].plot(t, [r2_yaw] * len(t), label='R-squared Yaw')
+
         axs1[0].set(xlabel='time (s)', ylabel='$\mathbf{p}_n$ (m)', title="Position")
         axs1[1].set(xlabel='time (s)', ylabel='$\mathbf{v}_n$ (m/s)', title="Velocity")
         axs1[2].set(xlabel='time (s)', ylabel='$\mathbf{R}_n^T \mathbf{v}_n$ (m/s)',
@@ -165,11 +210,22 @@ def results_filter(args, dataset):
                     title="Cumulative Absolute Trajectory Error (CATE)")
         axs7[2].set(xlabel='time (s)', ylabel=r' $\mathbf{\xi}_{n}^{\mathbf{p}}$',
                     title="$SE(3)$ error on position")
+        # Set labels and titles for velocity
+        axs8[0].set(xlabel='time (s)', ylabel='R-squared Position X', title="R-squared Values for Position X")
+        axs8[1].set(xlabel='time (s)', ylabel='R-squared position Y', title="R-squared Values for Position Y")
+        axs8[2].set(xlabel='time (s)', ylabel='R-squared position Z', title="R-squared Values for Position Z")
 
-        for ax in chain(axs1, axs2, axs5, axs6, axs7):
+        axs9[0].set(xlabel='time (s)', ylabel='R-squared Roll', title="R-squared Values for Roll")
+        axs9[1].set(xlabel='time (s)', ylabel='R-squared Pitch', title="R-squared Values for Pitch")
+        axs9[2].set(xlabel='time (s)', ylabel='R-squared Yaw', title="R-squared Values for Yaw")
+
+
+        for ax in chain(axs1, axs2, axs5, axs6, axs7,axs8,axs9):
             ax.grid()
+
         ax3.grid()
         ax4.grid()
+
         axs1[0].legend(
             ['$p_n^x$', '$p_n^y$', '$p_n^z$', '$\hat{p}_n^x$', '$\hat{p}_n^y$', '$\hat{p}_n^z$'])
         axs1[1].legend(
@@ -192,15 +248,62 @@ def results_filter(args, dataset):
         axs7[0].legend(['MATE xy', 'MATE z', 'RMSE xy', 'RMSE z'])
         axs7[1].legend(['CATE xy', 'CATE z'])
 
+        axs8[0].legend()
+        axs8[1].legend()
+        axs8[2].legend()
+
+        axs9[0].legend()
+        axs9[1].legend()
+        axs9[2].legend()
+
         # save figures
-        figs = [fig1, fig2, fig3, fig4, fig5, fig6, fig7, ]
+        figs = [fig1, fig2, fig3, fig4, fig5, fig6, fig7, fig8,fig9]
         figs_name = ["position_velocity", "orientation_bias", "position_xy", "position_xy_aligned",
-                     "measurements_covs", "imu", "errors", "errors2"]
+                     "measurements_covs", "imu", "errors", "errors2", "R-squared loss position", "R-squared loss Orientation"]
         for l, fig in enumerate(figs):
             fig_name = figs_name[l]
             fig.savefig(os.path.join(folder_path, fig_name + ".png"))
 
         plt.show(block=True)
 
+        """
+        Below are arbeit results
+        """
+    # 1) avg rmse
 
+    # Calculate average RMSE
+    avg_RMSE_xy = np.mean( np.concatenate(RMSE_xy).ravel())
+    avg_RMSE_z = np.mean(np.concatenate(RMSE_z).ravel())
+    print(f"avg RMSE loss xy is {avg_RMSE_xy} and on z is {avg_RMSE_z}")
+
+    # Define folder paths
+    base_folder = 'layer_3_AI-IMU_Dead-Reckoning\\ai-imu-dr-master\\results\\arbier_results_pkl'
+    RMSExy_folder = os.path.join(base_folder, 'RMSE_XY.pkl')
+    RMSEz_folder = os.path.join(base_folder, 'RMSE_Z.pkl')
+
+    # Save average RMSE values to pickle files
+    with open(RMSExy_folder, 'wb') as f:
+        pickle.dump(avg_RMSE_xy, f)
+
+    with open(RMSEz_folder, 'wb') as f:
+        pickle.dump(avg_RMSE_z, f)
+    
+    #2)import saved loss per epoch and plot the graph (epoch,loss)
+        
+    file_path = 'layer_3_AI-IMU_Dead-Reckoning\\ai-imu-dr-master\\results\\arbier_results_pkl\\avg_loss_results.pkl'
+    with open(file_path, 'rb') as file:
+        avg_loss_per_epoch = pickle.load(file)
+    
+    print(f'avg_loss per epochafter loded in plot file {avg_loss_per_epoch}')
+
+    #save the results in results folder before ploting graph, shoul be saved while running testfilter
+    def plot_avg_loss(avg_loss_per_epoch):
+        plt.plot(range(1, len(avg_loss_per_epoch) + 1), avg_loss_per_epoch, marker='o')
+        plt.title('Average Training Loss per Epoch')
+        plt.xlabel('Epoch')
+        plt.ylabel('Average Training Loss')
+        plt.savefig("layer_3_AI-IMU_Dead-Reckoning\\ai-imu-dr-master\\results\\arbeit_results_fig\\avg_loss_results.png")
+        plt.show()
+        
+    plot_avg_loss(avg_loss_per_epoch)
 

@@ -39,32 +39,71 @@ class InitProcessCovNet(torch.nn.Module):
 
 
 class MesNet(torch.nn.Module):
-        def __init__(self):
-            super(MesNet, self).__init__()
-            self.beta_measurement = 3*torch.ones(2).double()
-            self.tanh = torch.nn.Tanh()
+        """
+        Measurement Network (MesNet) for the Implicit Extended Kalman Filter (IEKF).
 
-            self.cov_net = torch.nn.Sequential(torch.nn.Conv1d(6, 32, 5),
-                       torch.nn.ReplicationPad1d(4),
-                       torch.nn.ReLU(),
-                       torch.nn.Dropout(p=0.5),
-                       torch.nn.Conv1d(32, 32, 5, dilation=3),
-                       torch.nn.ReplicationPad1d(4),
-                       torch.nn.ReLU(),
-                       torch.nn.Dropout(p=0.5),
-                       ).double()
-            "CNN for measurement covariance"
-            self.cov_lin = torch.nn.Sequential(torch.nn.Linear(32, 2),
+        This network takes the input sensor data and predicts the measurement covariance
+        for the IEKF. The input data consists of the sensor readings, and the output is
+        the predicted measurement covariance.
+
+        Parameters:
+            None
+
+        Attributes:
+            - beta_measurement (torch.Tensor): Scaling factor for the predicted covariance.
+            - tanh (torch.nn.Tanh): Hyperbolic tangent activation function.
+
+            Convolutional Neural Network (CNN) Layers:
+            - cov_net (torch.nn.Sequential): CNN layers for processing sensor data.
+            - cov_lin (torch.nn.Sequential): Linear layer for predicting the covariance.
+
+        Input:
+            - u (torch.Tensor): Input sensor data tensor with shape (batch_size, num_features=6, sequence_length=6000).
+                num_features = 6D pose (acc and gyro)
+        Output:
+            - measurements_covs (torch.Tensor): Predicted measurement covariance tensor with shape (batch_size, 2),
+            where 2 represents the two elements of the covariance matrix (variance for gyro and acc).
+          """
+        def __init__(self, activation_function=torch.nn.ReLU):
+            super(MesNet, self).__init__()
+            self.beta_measurement = 3 * torch.ones(2).double()
+            self.activation_function = activation_function()
+
+            self.cov_net = torch.nn.Sequential(
+                    torch.nn.Conv1d(6, 32, 5),
+                    torch.nn.ReplicationPad1d(4),
+                    torch.nn.ReLU(),
+                    torch.nn.Dropout(p=0.5),
+                    
+                    torch.nn.Conv1d(32, 32, 5),
+                    torch.nn.ReplicationPad1d(2),
+                    torch.nn.ReLU(),
+
+                    torch.nn.Conv1d(32, 32, 5),
+                    torch.nn.ReplicationPad1d(2),
+                    torch.nn.ReLU(),
+
+                    torch.nn.Conv1d(32, 32, 5, dilation=3),
+                    torch.nn.ReplicationPad1d(4),
+                    torch.nn.ReLU(),
+                    torch.nn.Dropout(p=0.5),
+                    ).double()
+            self.cov_lin = torch.nn.Sequential(torch.nn.Linear(32, 2), 
                                               torch.nn.Tanh(),
                                               ).double()
             self.cov_lin[0].bias.data[:] /= 100
             self.cov_lin[0].weight.data[:] /= 100
 
         def forward(self, u, iekf):
+            print(f"input to network shape is {u.shape}")
             y_cov = self.cov_net(u).transpose(0, 2).squeeze()
+            #print(f"output of conv_net is{y_cov} and shape is {y_cov.shape}")
             z_cov = self.cov_lin(y_cov)
+            #print(f"output of conv_lin is{z_cov} and shape is {z_cov.shape}")
             z_cov_net = self.beta_measurement.unsqueeze(0)*z_cov
+            #print(f"output of beta mesurments is{z_cov_net} and shape is {z_cov_net.shape}")
             measurements_covs = (iekf.cov0_measurement.unsqueeze(0) * (10**z_cov_net))
+            print(f"mesurment cov shape is {measurements_covs.shape}")
             return measurements_covs
 
 
@@ -99,7 +138,7 @@ class TORCHIEKF(torch.nn.Module, NUMPYIEKF):
                      and not callable(getattr(self.filter_parameters, a))]
         for attr in attr_list:
             setattr(self, attr, getattr(self.filter_parameters, attr))
-
+        # Q is noise parameter associated to state estimate Xn and input Un
         self.Q = torch.diag(torch.Tensor([self.cov_omega, self.cov_omega, self. cov_omega,
                                            self.cov_acc, self.cov_acc, self.cov_acc,
                                            self.cov_b_omega, self.cov_b_omega, self.cov_b_omega,
@@ -236,7 +275,7 @@ class TORCHIEKF(torch.nn.Module, NUMPYIEKF):
     @staticmethod
     def state_and_cov_update(Rot, v, p, b_omega, b_acc, Rot_c_i, t_c_i, P, H, r, R):
         S = H.mm(P).mm(H.t()) + R
-        Kt, _ = torch.gesv(P.mm(H.t()).t(), S)
+        Kt = torch.linalg.solve(S, P.mm(H.t()).t())
         K = Kt.t()
         dx = K.mv(r.view(-1))
 
@@ -421,8 +460,11 @@ class TORCHIEKF(torch.nn.Module, NUMPYIEKF):
         return U.mm(S).mm(V.t())
 
     def forward_nets(self, u):
+        #print(f"input to nets before unsqueez{u}, and shape {u.shape}")
         u_n = self.normalize_u(u).t().unsqueeze(0)
+        #print(f"after normalize and unsqueez {u_n}, and shape{u_n.shape}")
         u_n = u_n[:, :6]
+        #print(f"after slicing all rows and 0-6 colums{u_n}, and shape{u_n.shape}")
         measurements_covs = self.mes_net(u_n, self)
         return measurements_covs
 
