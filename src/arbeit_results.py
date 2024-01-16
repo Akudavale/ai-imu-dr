@@ -6,11 +6,11 @@ def results():
     import saved loss per epoch and plot the graph (epoch,loss)
     """
 
-    file_path = 'base_layer_2_AI-IMU_Dead-Reckoning\\ai-imu-dr-master\\arbeit results\\pickel files\\avg_loss_per_epoch\\avg_loss_results.pkl'
+    file_path = 'layer_3_AI-IMU_Dead-Reckoning\\ai-imu-dr-master\\arbeit results\\pickel files\\avg_loss_per_epoch\\avg_loss_results.pkl'
     with open(file_path, 'rb') as file:
         avg_loss_per_epoch = pickle.load(file)
     
-    #print(f'avg_loss per epochafter loded in plot file {avg_loss_per_epoch}') #debug
+    print(f'avg_loss per epochafter loded in plot file {avg_loss_per_epoch}')
 
     #save the results in results folder before ploting graph, shoul be saved while running testfilter
     def plot_avg_loss(avg_loss_per_epoch):
@@ -18,7 +18,7 @@ def results():
         plt.title('Average Training Loss per Epoch')
         plt.xlabel('Epoch')
         plt.ylabel('Average Training Loss')
-        plt.savefig("base_layer_2_AI-IMU_Dead-Reckoning\\ai-imu-dr-master\\arbeit results\\Figures\\Average_Training_Loss_per_Epoch.png")
+        plt.savefig("layer_3_AI-IMU_Dead-Reckoning\\ai-imu-dr-master\\arbeit results\\Figures\\'Average_Training_Loss_per_Epoch.png")
         plt.show()
         
     plot_avg_loss(avg_loss_per_epoch)

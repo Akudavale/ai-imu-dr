@@ -37,6 +37,7 @@ def launch(args):
 
     if args.arbeit_results:
         results()
+
 #%%
 
 class KITTIParameters(IEKF.Parameters):
@@ -477,11 +478,11 @@ def test_filter(args, dataset):
 #%%
 class KITTIArgs():
         path_data_base = "rawdata"
-        path_data_save = "base_layer_2_AI-IMU_Dead-Reckoning\\ai-imu-dr-master\\data"
-        path_results = "base_layer_2_AI-IMU_Dead-Reckoning\\ai-imu-dr-master\\results"
-        path_temp = "base_layer_2_AI-IMU_Dead-Reckoning\\ai-imu-dr-master\\temp"
+        path_data_save = "layer_3_AI-IMU_Dead-Reckoning\\ai-imu-dr-master\\data"
+        path_results = "layer_3_AI-IMU_Dead-Reckoning\\ai-imu-dr-master\\results"
+        path_temp = "layer_3_AI-IMU_Dead-Reckoning\\ai-imu-dr-master\\temp"
 
-        epochs = 2
+        epochs = 1
         seq_dim = 6000
 
         # training, cross-validation and test dataset
@@ -491,12 +492,11 @@ class KITTIArgs():
 
         # choose what to do
         read_data = 0
-        train_filter = 1
+        train_filter = 0
         test_filter = 0
         results_filter = 0
         arbeit_results = 0
 
-    
         dataset_class = KITTIDataset
         parameter_class = KITTIParameters
 

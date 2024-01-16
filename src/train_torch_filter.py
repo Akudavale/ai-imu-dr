@@ -7,7 +7,7 @@ from termcolor import cprint
 from utils_torch_filter import TORCHIEKF
 from utils import prepare_data
 import copy
-import  pickle
+import pickle
 
 """max_loss, max_grad_norm, min_lr: These are parameters used for training control.
 criterion"""
@@ -63,7 +63,6 @@ def compute_delta_p(Rot, p):
         list_rpe[2] = delta_p
     return list_rpe
 
-
 def train_filter(args, dataset):
 
     """
@@ -94,10 +93,9 @@ def train_filter(args, dataset):
         print("Amount of time spent for 1 epoch: {}s\n".format(int(time.time() - start_time)))
         start_time = time.time()
 
-    save_loss_folder='base_layer_2_AI-IMU_Dead-Reckoning\\ai-imu-dr-master\\\arbeit results\\pickel files\\avg_loss_per_epoch\\avg_loss_results.pkl' 
+    save_loss_folder='layer_3_AI-IMU_Dead-Reckoning\\ai-imu-dr-master\\arbeit results\\pickel files\\avg_loss_per_epoch\\avg_loss_results.pkl' 
     with open(save_loss_folder, 'wb') as f:
         pickle.dump(avg_loss_per_epoch, f)
-
 
 def prepare_filter(args, dataset):
 
@@ -132,13 +130,13 @@ def prepare_loss_data(args, dataset):
         dataset.list_rpe_validation = mondict['list_rpe_validation']
         if set(dataset.datasets_train_filter.keys()) <= set(dataset.list_rpe.keys()): 
             return
-             
+        
     # prepare delta_p_gt
     list_rpe = {}
     for dataset_name, Ns in dataset.datasets_train_filter.items():
         t, ang_gt, p_gt, v_gt, u = prepare_data(args, dataset, dataset_name, 0)
         p_gt = p_gt.double()
-        Rot_gt = torch.zeros(Ns[1], 3, 3)
+        Rot_gt = torch.zeros((Ns[1], 3, 3))
         for k in range(Ns[1]):
             ang_k = ang_gt[k]
             Rot_gt[k] = TORCHIEKF.from_rpy(ang_k[0], ang_k[1], ang_k[2]).double()
@@ -148,7 +146,7 @@ def prepare_loss_data(args, dataset):
     for dataset_name, Ns in dataset.datasets_validatation_filter.items():
         t, ang_gt, p_gt, v_gt, u = prepare_data(args, dataset, dataset_name, 0)
         p_gt = p_gt.double()
-        Rot_gt = torch.zeros(Ns[1], 3, 3)
+        Rot_gt = torch.zeros((Ns[1], 3, 3))
         for k in range(Ns[1]):
             ang_k = ang_gt[k]
             Rot_gt[k] = TORCHIEKF.from_rpy(ang_k[0], ang_k[1], ang_k[2]).double()

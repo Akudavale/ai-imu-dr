@@ -1,18 +1,19 @@
 import matplotlib
 import os
+import pickle
 from termcolor import cprint
 import matplotlib.pyplot as plt
 import numpy as np
 from itertools import chain
 from utils import *
 from utils_torch_filter import TORCHIEKF
-import pickle
 
 def results_filter(args, dataset):
     RMSE_xy = []
     RMSE_z = []
     Trajectory_rmse_dict = {}
     for i in range(0, len(dataset.datasets)):
+        #print(i) #debug
         plt.close('all')
         dataset_name = dataset.dataset_name(i)
         file_name = os.path.join(dataset.path_results, dataset_name + "_filter.p")
@@ -66,6 +67,7 @@ def results_filter(args, dataset):
 
         # Compute various errors
         error_p = np.abs(p_gt - p)
+  
         # MATE
         mate_xy = np.mean(error_p[:, :2], 1)
         mate_z = error_p[:, 2]
@@ -87,7 +89,7 @@ def results_filter(args, dataset):
         Trajectory = str(dataset_name) 
         Trajectory = Trajectory.rstrip("_extract")
         Trajectory_rmse_dict[Trajectory] = {'RMSE_xy': avg_RMSE_xy_trajectory, 'RMSE_z': avg_RMSE_z_trajectory}
-        
+
         #R_Squared loss or Coefficient of Determination:
         """ provides a measure of how well the predicted states explain the variability in the actual states.
             It ranges between 0 and 1, with higher values indicating a better fit.
@@ -269,10 +271,9 @@ def results_filter(args, dataset):
             fig.savefig(os.path.join(folder_path, fig_name + ".png"))
 
         plt.show(block=True)
-
     # 1)Rmse /later for each trajectory
     # save avg rmse calculated for each trajectory as dict
-    Trajectory_RMSE_path = "base_layer_2_AI-IMU_Dead-Reckoning\\ai-imu-dr-master\\arbeit results\\pickel files\\Trajectory_Rmse\\Trajectory_Rmse.pkl"
+    Trajectory_RMSE_path = "layer_3_AI-IMU_Dead-Reckoning\\ai-imu-dr-master\\arbeit results\\pickel files\\Trajectory_Rmse\\Trajectory_Rmse.pkl"
     with open(Trajectory_RMSE_path, 'wb') as f:
         pickle.dump(Trajectory_rmse_dict, f)
 
@@ -301,7 +302,7 @@ def results_filter(args, dataset):
     
     #3)import saved loss per epoch and plot the graph (epoch,loss)
         
-    file_path = 'base_layer_2_AI-IMU_Dead-Reckoning\\ai-imu-dr-master\\arbeit results\\pickel files\\avg_loss_per_epoch\\avg_loss_results.pkl'
+    file_path = 'layer_3_AI-IMU_Dead-Reckoning\\ai-imu-dr-master\\arbeit results\\pickel files\\avg_loss_per_epoch\\avg_loss_results.pkl'
     with open(file_path, 'rb') as file:
         avg_loss_per_epoch = pickle.load(file)
     
@@ -313,8 +314,11 @@ def results_filter(args, dataset):
         plt.title('Average Training Loss per Epoch')
         plt.xlabel('Epoch')
         plt.ylabel('Average Training Loss')
-        plt.savefig("base_layer_2_AI-IMU_Dead-Reckoning\\ai-imu-dr-master\\arbeit results\\Figures\\Average_Training_Loss_per_Epoch.png")
+        plt.savefig("layer_3_AI-IMU_Dead-Reckoning\\ai-imu-dr-master\\arbeit results\\Figures\\'Average_Training_Loss_per_Epoch.png")
         plt.show()
         
     plot_avg_loss(avg_loss_per_epoch)
+
+    
+    
 

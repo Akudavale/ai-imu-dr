@@ -64,21 +64,26 @@ class MesNet(torch.nn.Module):
             - measurements_covs (torch.Tensor): Predicted measurement covariance tensor with shape (batch_size, 2),
             where 2 represents the two elements of the covariance matrix (variance for gyro and acc).
           """
-        def __init__(self):
+        def __init__(self, activation_function=torch.nn.ReLU):
             super(MesNet, self).__init__()
-            self.beta_measurement = 3*torch.ones(2).double()
-            self.tanh = torch.nn.Tanh()
+            self.beta_measurement = 3 * torch.ones(2).double()
+            self.activation_function = activation_function()
 
-            self.cov_net = torch.nn.Sequential(torch.nn.Conv1d(6, 32, 5),
+            self.cov_net = torch.nn.Sequential(
+                    torch.nn.Conv1d(6, 32, 5),
                     torch.nn.ReplicationPad1d(4),
                     torch.nn.ReLU(),
                     torch.nn.Dropout(p=0.5),
+                    
+                    torch.nn.Conv1d(32, 32, 5),
+                    torch.nn.ReplicationPad1d(2),
+                    torch.nn.ReLU(),
+
                     torch.nn.Conv1d(32, 32, 5, dilation=3),
                     torch.nn.ReplicationPad1d(4),
                     torch.nn.ReLU(),
                     torch.nn.Dropout(p=0.5),
                     ).double()
-            "CNN for measurement covariance"
             self.cov_lin = torch.nn.Sequential(torch.nn.Linear(32, 2), 
                                               torch.nn.Tanh(),
                                               ).double()
@@ -86,14 +91,14 @@ class MesNet(torch.nn.Module):
             self.cov_lin[0].weight.data[:] /= 100
 
         def forward(self, u, iekf):
-            print(f"input to network shape is {u.shape}")
+            print(f"input to network shape is {u.shape}") #debug
             y_cov = self.cov_net(u).transpose(0, 2).squeeze()
             #print(f"output of conv_net is{y_cov} and shape is {y_cov.shape}")
             z_cov = self.cov_lin(y_cov)
             #print(f"output of conv_lin is{z_cov} and shape is {z_cov.shape}")
             z_cov_net = self.beta_measurement.unsqueeze(0)*z_cov
             #print(f"output of beta mesurments is{z_cov_net} and shape is {z_cov_net.shape}")
-            measurements_covs = (iekf.cov0_measurement.unsqueeze(0) * (10**z_cov_net))
+            measurements_covs = (iekf.cov0_measurement.unsqueeze(0) * (10**z_cov_net)) #debug
             print(f"mesurment cov shape is {measurements_covs.shape}")
             return measurements_covs
 
@@ -144,11 +149,7 @@ class TORCHIEKF(torch.nn.Module, NUMPYIEKF):
         dt = t[1:] - t[:-1]  # (s)
         Rot, v, p, b_omega, b_acc, Rot_c_i, t_c_i, P = self.init_run(dt, u, p_mes, v_mes,
                                        N, ang0)
-        #print(f"N is {N}")
-        #print(f"shape of mesurment covs{measurements_covs.shape}")
-        conv=[]
-        for i in range(1,N):
-            conv.append(measurements_covs[i])
+
         for i in range(1, N):
             Rot_i, v_i, p_i, b_omega_i, b_acc_i, Rot_c_i_i, t_c_i_i, P_i = \
                 self.propagate(Rot[i-1], v[i-1], p[i-1], b_omega[i-1], b_acc[i-1], Rot_c_i[i-1],
