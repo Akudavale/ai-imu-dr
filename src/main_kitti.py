@@ -1,3 +1,4 @@
+#%%
 import os
 import shutil
 import numpy as np
@@ -17,8 +18,9 @@ from utils_numpy_filter import NUMPYIEKF as IEKF
 from utils import prepare_data
 from train_torch_filter import train_filter
 from utils_plot import results_filter
+from arbeit_results import results
 
-
+#%%
 def launch(args):
     if args.read_data:
         args.dataset_class.read_data(args)
@@ -33,6 +35,9 @@ def launch(args):
     if args.results_filter:
         results_filter(args, dataset)
 
+    if args.arbeit_results:
+        results()
+#%%
 
 class KITTIParameters(IEKF.Parameters):
     # gravity vector
@@ -62,10 +67,10 @@ class KITTIParameters(IEKF.Parameters):
                      not a.startswith('__') and not callable(getattr(KITTIParameters, a))]
         for attr in attr_list:
             setattr(self, attr, getattr(KITTIParameters, attr))
-
+#%%
 
 class KITTIDataset(BaseDataset):
-    OxtsPacket = namedtuple('OxtsPacket',
+    OxtsPacket = namedtuple('OxtsPacket', #packet of data related to OXTS Sensor
                             'lat, lon, alt, ' + 'roll, pitch, yaw, ' + 'vn, ve, vf, vl, vu, '
                                                                        '' + 'ax, ay, az, af, al, '
                                                                             'au, ' + 'wx, wy, wz, '
@@ -148,19 +153,24 @@ class KITTIDataset(BaseDataset):
         date_dirs = os.listdir(args.path_data_base)
         for n_iter, date_dir in enumerate(date_dirs):
             # get access to each sequence
+            #print('1')
             path1 = os.path.join(args.path_data_base, date_dir)
             if not os.path.isdir(path1):
+                #print('1.1')
                 continue
             date_dirs2 = os.listdir(path1)
+            #print('2')
 
             for date_dir2 in date_dirs2:
                 path2 = os.path.join(path1, date_dir2)
+                #print('2.1')
                 if not os.path.isdir(path2):
+                    #print('2.2')
                     continue
                 # read data
                 oxts_files = sorted(glob.glob(os.path.join(path2, 'oxts', 'data', '*.txt')))
                 oxts = KITTIDataset.load_oxts_packets_and_poses(oxts_files)
-
+                
                 """ Note on difference between ground truth and oxts solution:
                     - orientation is the same
                     - north and east axis are inverted
@@ -189,9 +199,10 @@ class KITTIDataset(BaseDataset):
                 p_gt = np.zeros((len(oxts), 3))
                 v_gt = np.zeros((len(oxts), 3))
                 v_rob_gt = np.zeros((len(oxts), 3))
-
+                #print('3')
                 k_max = len(oxts)
                 for k in range(k_max):
+                    #print('3.1')
                     oxts_k = oxts[k]
                     t[k] = 3600 * t[k].hour + 60 * t[k].minute + t[k].second + t[
                         k].microsecond / 1e6
@@ -222,7 +233,8 @@ class KITTIDataset(BaseDataset):
                     p_gt[k] = oxts_k[1][:3, 3]
                     Rot_gt_k = oxts_k[1][:3, :3]
                     roll_gt[k], pitch_gt[k], yaw_gt[k] = IEKF.to_rpy(Rot_gt_k)
-
+                    #print('4')
+                    
                 t0 = t[0]
                 t = np.array(t) - t[0]
                 # some data can have gps out
@@ -232,7 +244,7 @@ class KITTIDataset(BaseDataset):
                 ang_gt[:, 0] = roll_gt
                 ang_gt[:, 1] = pitch_gt
                 ang_gt[:, 2] = yaw_gt
-
+                #print('5')
                 p_oxts = lla2ned(lat_oxts, lon_oxts, alt_oxts, lat_oxts[0], lon_oxts[0],
                                  alt_oxts[0], latlon_unit='deg', alt_unit='m', model='wgs84')
                 p_oxts[:, [0, 1]] = p_oxts[:, [1, 0]]  # see note
@@ -260,15 +272,15 @@ class KITTIDataset(BaseDataset):
 
                 t_tot += t[-1] - t[0]
                 KITTIDataset.dump(mondict, args.path_data_save, date_dir2)
+                #print('file saved2')
         print("\n Total dataset duration : {:.2f} s".format(t_tot))
 
-    @staticmethod
+    """@staticmethod
     def prune_unused_data(args):
-        """
+        
         Deleting image and velodyne
         Returns:
-
-        """
+        
 
         unused_list = ['image_00', 'image_01', 'image_02', 'image_03', 'velodyne_points']
         date_dirs = ['2011_09_28', '2011_09_29', '2011_09_30', '2011_10_03']
@@ -288,7 +300,7 @@ class KITTIDataset(BaseDataset):
                     path3 = os.path.join(path2, folder)
                     if os.path.isdir(path3):
                         print(path3)
-                        shutil.rmtree(path3)
+                        shutil.rmtree(path3)"""
 
     @staticmethod
     def subselect_files(files, indices):
@@ -322,10 +334,17 @@ class KITTIDataset(BaseDataset):
     @staticmethod
     def pose_from_oxts_packet(packet, scale):
         """Helper method to compute a SE(3) pose matrix from an OXTS packet.
+            process of converting geographical coordinates (latitude and longitude)
+            into a three-dimensional Cartesian coordinate system
+            The SE(3) matrix is a 4x4 matrix with a specific structure:
+                ([R t]
+                [0 1]) The last row [0,0,0,1] is added to make the matrix homogeneous.
         """
         er = 6378137.  # earth radius (approx.) in meters
-
+        """The use of Earth's radius ensures that the conversion takes into account the size of the Earth 
+            when creating a transformation matrix to represent the position and orientation in three-dimensional space."""
         # Use a Mercator projection to get the translation vector
+        """The formulas involve conversions and scaling to obtain the translation components along the x, y, and z axes."""
         tx = scale * packet.lon * np.pi * er / 180.
         ty = scale * er * np.log(np.tan((90. + packet.lat) * np.pi / 360.))
         tz = packet.alt
@@ -354,6 +373,8 @@ class KITTIDataset(BaseDataset):
            whose origin is the first GPS position.
         """
         # Scale for Mercator projection (from first lat value)
+        """Mercator is a conformal cylindrical map projection that was originally 
+            created to display accurate compass bearings for sea travel."""
         scale = None
         # Origin of the global coordinate system (first GPS position)
         origin = None
@@ -368,7 +389,7 @@ class KITTIDataset(BaseDataset):
                     line[:-5] = [float(x) for x in line[:-5]]
                     line[-5:] = [int(float(x)) for x in line[-5:]]
 
-                    packet = KITTIDataset.OxtsPacket(*line)
+                    packet = KITTIDataset.OxtsPacket(*line) #line variable as arguments to the constructor or method.
 
                     if scale is None:
                         scale = np.cos(packet.lat * np.pi / 180.)
@@ -399,8 +420,8 @@ class KITTIDataset(BaseDataset):
                 timestamps.append(t)
         return timestamps
 
-    def load_timestamps_img(data_path):
-        """Load timestamps from file."""
+    """def load_timestamps_img(data_path):
+        #Load timestamps from file.
         timestamp_file = os.path.join(data_path, 'image_00', 'timestamps.txt')
 
         # Read and parse the timestamps
@@ -412,11 +433,11 @@ class KITTIDataset(BaseDataset):
                 # get rid of \n (counts as 1) and extra 3 digits
                 t = datetime.datetime.strptime(line[:-4], '%Y-%m-%d %H:%M:%S.%f')
                 timestamps.append(t)
-        return timestamps
+        return timestamps"""
 
-
+#%%
 def test_filter(args, dataset):
-    iekf = IEKF()
+    iekf = IEKF() #numpyikef as ikef
     torch_iekf = TORCHIEKF()
 
     # put Kitti parameters
@@ -453,14 +474,14 @@ def test_filter(args, dataset):
             }
         dataset.dump(mondict, args.path_results, dataset_name + "_filter.p")
 
-
+#%%
 class KITTIArgs():
-        path_data_base = "/media/mines/46230797-4d43-4860-9b76-ce35e699ea47/KITTI/raw"
-        path_data_save = "../data"
-        path_results = "../results"
-        path_temp = "../temp"
+        path_data_base = "rawdata"
+        path_data_save = "base_layer_2_AI-IMU_Dead-Reckoning\\ai-imu-dr-master\\data"
+        path_results = "base_layer_2_AI-IMU_Dead-Reckoning\\ai-imu-dr-master\\results"
+        path_temp = "base_layer_2_AI-IMU_Dead-Reckoning\\ai-imu-dr-master\\temp"
 
-        epochs = 400
+        epochs = 2
         seq_dim = 6000
 
         # training, cross-validation and test dataset
@@ -470,15 +491,17 @@ class KITTIArgs():
 
         # choose what to do
         read_data = 0
-        train_filter = 0
-        test_filter = 1
-        results_filter = 1
+        train_filter = 1
+        test_filter = 0
+        results_filter = 0
+        arbeit_results = 0
+
+    
         dataset_class = KITTIDataset
         parameter_class = KITTIParameters
 
-
+#%%
 if __name__ == '__main__':
     args = KITTIArgs()
     dataset = KITTIDataset(args)
     launch(KITTIArgs)
-

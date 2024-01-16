@@ -7,22 +7,30 @@ from termcolor import cprint
 from utils_torch_filter import TORCHIEKF
 from utils import prepare_data
 import copy
+import  pickle
 
-max_loss = 2e1
+"""max_loss, max_grad_norm, min_lr: These are parameters used for training control.
+criterion"""
+
+max_loss = 2e1 
 max_grad_norm = 1e0
 min_lr = 1e-5
-criterion = torch.nn.MSELoss(reduction="sum")
+
+criterion = torch.nn.MSELoss(reduction="sum")#Loss Function
+
+"""Learning rates and weight decays are defined separately 
+    for different components of the IEKF model."""
 lr_initprocesscov_net = 1e-4
 weight_decay_initprocesscov_net = 0e-8
-lr_mesnet = {'cov_net': 1e-4,
-    'cov_lin': 1e-4,
-    }
-weight_decay_mesnet = {'cov_net': 1e-8,
-    'cov_lin': 1e-8,
-    }
+lr_mesnet = {'cov_net': 1e-4,'cov_lin': 1e-4,}
+weight_decay_mesnet = {'cov_net': 1e-8,'cov_lin': 1e-8,}
 
 
 def compute_delta_p(Rot, p):
+    """
+    Computes the pose differences for a given rotation and translation
+
+    """
     list_rpe = [[], [], []]  # [idx_0, idx_end, pose_delta_p]
 
     # sample at 1 Hz
@@ -57,20 +65,43 @@ def compute_delta_p(Rot, p):
 
 
 def train_filter(args, dataset):
+
+    """
+    Sets up and prepares the IEKF filter for training.
+    Calls prepare_filter, prepare_loss_data, and save_iekf.
+    Initializes optimizer and enters the training loop.
+    """
+    # Store average training loss for each epoch
+    avg_loss_per_epoch = []
     iekf = prepare_filter(args, dataset)
     prepare_loss_data(args, dataset)
     save_iekf(args, iekf)
     optimizer = set_optimizer(iekf)
     start_time = time.time()
+    # Clear the list before starting a new training run
+    avg_loss_per_epoch.clear()
 
     for epoch in range(1, args.epochs + 1):
-        train_loop(args, dataset, epoch, iekf, optimizer, args.seq_dim)
+        loss_train=train_loop(args, dataset, epoch, iekf, optimizer, args.seq_dim)
+
+        if loss_train is not None:
+            avg_loss_per_epoch.append(loss_train.item() / len(dataset.datasets_train_filter))
+        else:
+            # Handle the case where training loss is not available or valid
+            avg_loss_per_epoch.append(None)
         save_iekf(args, iekf)
+        #print(f"loss train for one epoch is {loss_train} and scalar value is {loss_train.item()}") #debug
         print("Amount of time spent for 1 epoch: {}s\n".format(int(time.time() - start_time)))
         start_time = time.time()
 
+    save_loss_folder='base_layer_2_AI-IMU_Dead-Reckoning\\ai-imu-dr-master\\\arbeit results\\pickel files\\avg_loss_per_epoch\\avg_loss_results.pkl' 
+    with open(save_loss_folder, 'wb') as f:
+        pickle.dump(avg_loss_per_epoch, f)
+
 
 def prepare_filter(args, dataset):
+
+    #Initializes a TORCHIEKF model.
     iekf = TORCHIEKF()
 
     # set dataset parameter
@@ -89,8 +120,10 @@ def prepare_filter(args, dataset):
 
 
 def prepare_loss_data(args, dataset):
-
-
+    """
+    Computes and prepares the ground truth pose differences (delta_p) for training and validation datasets.
+    Removes datasets with insufficient data.
+    """
 
     file_delta_p = os.path.join(args.path_temp, 'delta_p.p')
     if os.path.isfile(file_delta_p):
@@ -99,7 +132,7 @@ def prepare_loss_data(args, dataset):
         dataset.list_rpe_validation = mondict['list_rpe_validation']
         if set(dataset.datasets_train_filter.keys()) <= set(dataset.list_rpe.keys()): 
             return
-
+             
     # prepare delta_p_gt
     list_rpe = {}
     for dataset_name, Ns in dataset.datasets_train_filter.items():
@@ -120,11 +153,11 @@ def prepare_loss_data(args, dataset):
             ang_k = ang_gt[k]
             Rot_gt[k] = TORCHIEKF.from_rpy(ang_k[0], ang_k[1], ang_k[2]).double()
         list_rpe_validation[dataset_name] = compute_delta_p(Rot_gt[:Ns[1]], p_gt[:Ns[1]])
-    
+   
     list_rpe_ = copy.deepcopy(list_rpe)
     dataset.list_rpe = {}
     for dataset_name, rpe in list_rpe_.items():
-        if len(rpe[0]) is not 0:
+        if len(rpe[0]) != 0:
             dataset.list_rpe[dataset_name] = list_rpe[dataset_name]
         else:
             dataset.datasets_train_filter.pop(dataset_name)
@@ -134,7 +167,7 @@ def prepare_loss_data(args, dataset):
     list_rpe_validation_ = copy.deepcopy(list_rpe_validation)
     dataset.list_rpe_validation = {}
     for dataset_name, rpe in list_rpe_validation_.items():
-        if len(rpe[0]) is not 0:
+        if len(rpe[0]) != 0:
             dataset.list_rpe_validation[dataset_name] = list_rpe_validation[dataset_name]
         else:
             dataset.datasets_validatation_filter.pop(dataset_name)
@@ -147,6 +180,11 @@ def prepare_loss_data(args, dataset):
 
 
 def train_loop(args, dataset, epoch, iekf, optimizer, seq_dim):
+    """
+    Performs training for each dataset in the training set.
+    Calls "mini_batch_step" for each dataset to compute loss.
+    Updates model parameters using the optimizer.
+    """
     loss_train = 0
     optimizer.zero_grad()
     for i, (dataset_name, Ns) in enumerate(dataset.datasets_train_filter.items()):
@@ -156,7 +194,7 @@ def train_loop(args, dataset, epoch, iekf, optimizer, seq_dim):
         loss = mini_batch_step(dataset, dataset_name, iekf,
                                dataset.list_rpe[dataset_name], t, ang_gt, p_gt, v_gt, u, N0)
 
-        if loss is -1 or torch.isnan(loss):
+        if (loss == -1 or torch.isnan(loss)):
             cprint("{} loss is invalid".format(i), 'yellow')
             continue
         elif loss > max_loss:
@@ -183,12 +221,18 @@ def train_loop(args, dataset, epoch, iekf, optimizer, seq_dim):
 
 
 def save_iekf(args, iekf):
+    #save the current state of IKEF model
     file_name = os.path.join(args.path_temp, "iekfnets.p")
     torch.save(iekf.state_dict(), file_name)
     print("The IEKF nets are saved in the file " + file_name)
 
 
 def mini_batch_step(dataset, dataset_name, iekf, list_rpe, t, ang_gt, p_gt, v_gt, u, N0):
+    """
+    Sets process and measurement noise covariance matrices.
+    Runs the IEKF for a mini-batch of data.
+    Computes the loss based on the predicted and ground truth pose differences.
+    """ 
     iekf.set_Q()
     measurements_covs = iekf.forward_nets(u)
     Rot, v, p, b_omega, b_acc, Rot_c_i, t_c_i = iekf.run(t, u,measurements_covs,
@@ -202,6 +246,7 @@ def mini_batch_step(dataset, dataset_name, iekf, list_rpe, t, ang_gt, p_gt, v_gt
 
 
 def set_optimizer(iekf):
+    #sets optimizer for training
     param_list = [{'params': iekf.initprocesscov_net.parameters(),
                            'lr': lr_initprocesscov_net,
                            'weight_decay': weight_decay_initprocesscov_net}]
@@ -231,7 +276,7 @@ def prepare_data_filter(dataset, dataset_name, Ns, iekf, seq_dim):
     v_gt = v_gt[N0: N].double()
     u = u[N0: N].double()
 
-    # add noise
+    # add noise, if model is in train mode
     if iekf.mes_net.training:
         u = dataset.add_noise(u)
 
@@ -249,6 +294,7 @@ def get_start_and_end(seq_dim, u):
 
 
 def precompute_lost(Rot, p, list_rpe, N0):
+    #Precomputes ground truth pose differences for the validation set.
     N = p.shape[0]
     Rot_10_Hz = Rot[::10]
     p_10_Hz = p[::10]
@@ -259,10 +305,10 @@ def precompute_lost(Rot, p, list_rpe, N0):
     idxs[:] = 1
     idxs[idxs_0 < 0] = 0
     idxs[idxs_end >= int(N / 10)] = 0
-    delta_p_gt = delta_p_gt[idxs]
-    idxs_end_bis = idxs_end[idxs]
-    idxs_0_bis = idxs_0[idxs]
-    if len(idxs_0_bis) is 0: 
+    delta_p_gt = delta_p_gt[idxs.to(torch.bool)]
+    idxs_end_bis = idxs_end[idxs.to(torch.bool)]
+    idxs_0_bis = idxs_0[idxs.to(torch.bool)]
+    if len(idxs_0_bis) == 0: 
         return None, None     
     else:
         delta_p = Rot_10_Hz[idxs_0_bis].transpose(-1, -2).matmul(

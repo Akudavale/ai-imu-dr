@@ -16,11 +16,11 @@ class BaseDataset(Dataset):
 
     def __init__(self, args):
         # paths
-        self.path_data_save = args.path_data_save
+        self.path_data_save = args.path_data_save #path where data is saved
         """path where data are saved"""
-        self.path_results = args.path_results
+        self.path_results = args.path_results #path where results are saved 
         """path to the results"""
-        self.path_temp = args.path_temp
+        self.path_temp = args.path_temp #path where normalize factors and other are saved
         """path for temporary files"""
 
         self.datasets_test = args.test_sequences
@@ -60,7 +60,8 @@ class BaseDataset(Dataset):
     def __len__(self):
         return len(self.datasets)
 
-    def get_datasets(self):
+    def get_datasets(self): # for getting data into dataset valiable from the specified path
+        print(self.path_data_save)
         for dataset in os.listdir(self.path_data_save):
             self.datasets += [dataset[:-2]]  # take just name, remove the ".p"
         self.divide_datasets()
@@ -77,6 +78,11 @@ class BaseDataset(Dataset):
         pickle_dict = self[self.datasets.index(i) if type(i) != int else i]
         return pickle_dict['t'], pickle_dict['ang_gt'], pickle_dict['p_gt'], pickle_dict['v_gt'],\
                pickle_dict['u']
+
+    """u represents the raw input sensor data. In the code, it is a part of the loaded data dictionary (pickle_dict) and is accessed as pickle_dict['u'].
+        The data stored in u includes information from the sensor, and the shape of u is (num_samples, num_features), 
+        where num_samples is the number of data points, and num_features is the number of measurement features.
+    """
 
     def set_normalize_factors(self):
         path_normalize_factor = os.path.join(self.path_temp, self.file_normalize_factor)
@@ -140,6 +146,7 @@ class BaseDataset(Dataset):
         raise NotImplementedError
 
     @classmethod
+    #function to load pickel format files
     def load(cls, *_file_name):
         file_name = os.path.join(*_file_name)
         if not file_name.endswith(cls.pickle_extension):
@@ -152,9 +159,21 @@ class BaseDataset(Dataset):
     def dump(cls, mondict, *_file_name):
         file_name = os.path.join(*_file_name)
         if not file_name.endswith(cls.pickle_extension):
+            #print("file dosent end with .pkl formate") #debug code
             file_name += cls.pickle_extension
-        with open(file_name, "wb") as file_pi:
-            pickle.dump(mondict, file_pi)
+
+        #print("File path:", file_name) # debug code
+
+        try:
+            absolute_path = os.path.abspath(file_name)
+            with open(absolute_path, "wb") as file_pi:
+                pickle.dump(mondict, file_pi)
+        except Exception as e:
+            print("Error:", e)
+
+        """with open(file_name, "wb") as file_pi:
+            print("file saved1") #debug code
+            pickle.dump(mondict, file_pi)"""
 
     def init_state_torch_filter(self, iekf):
         b_omega0 = torch.zeros(3).double()
